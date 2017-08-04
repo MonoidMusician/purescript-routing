@@ -1,10 +1,9 @@
 module Routing.Match.Class where
 
 import Prelude (Unit)
-import Control.Alternative (class Alternative)
 import Data.Map as M
 
-class (Alternative f) <= MatchClass f where
+class MatchClass f where
   -- | `lit x` will match exactly the path component `x`.
   -- | For example, `lit "x"` matches `/x`.
   lit :: String -> f Unit

@@ -38,7 +38,8 @@
     "purescript-aff": "^3.0.0",
     "purescript-control": "^3.0.0",
     "purescript-console": "^3.0.0",
-    "purescript-integers": "^3.0.0"
+    "purescript-integers": "^3.0.0",
+    "purescript-profunctor-lenses": "^3.4.0"
   },
   "devDependencies": {
     "purescript-console": "^3.0.0"
