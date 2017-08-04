@@ -1,7 +1,7 @@
 module Routing.Routes where
 
 import Prelude
-import Routing.Match.Class
+import Routing.Match.Class (class MatchClass, end, int, lit)
 
 import Control.Apply (applyFirst, applySecond)
 import Control.Plus (empty, (<|>))
@@ -44,40 +44,11 @@ instance combmatch :: Combinators Match where
   andThen = applySecond
   before = applyFirst
 
-newtype Printer a = Printer (a -> String)
-derive instance newtypePrinter :: Newtype (Printer a) _
-
 newtype Routerify a = Routerify (a -> Route)
 derive instance newtypeRouterify :: Newtype (Routerify a) _
 
-instance contrafunctorPrinter :: Contravariant Printer where
-  cmap f (Printer p) = Printer (p <<< f)
-
 instance contrafunctorRouterify :: Contravariant Routerify where
   cmap f (Routerify p) = Routerify (p <<< f)
-
-instance combprinter :: Combinators Printer where
-  emptyVal = Printer (const mempty)
-  eitherOr (Printer l) (Printer r) = Printer \a -> l a <> r a
-  prismMap p (Printer r) = Printer (foldMap r <<< preview p)
-  withCurry (Printer l) (Printer r) = Printer \(Tuple a b) ->
-    l a <> r b
-  andThen (Printer l) (Printer r) = Printer \b ->
-    l unit <> r b
-  before (Printer l) (Printer r) = Printer \a ->
-    l a <> r unit
-
-instance matchclassprinter :: MatchClass Printer where
-  lit i = Printer (const i)
-  num = Printer show
-  int = Printer show
-  bool = Printer if _ then "true" else "false"
-  str = Printer id
-  end = Printer (const mempty)
-  fail = Printer <<< const
-  param p = Printer \v -> p <> "=" <> v
-  params = Printer \ps -> "?" <> joinWith "&"
-    (toUnfoldable ps <#> \(Tuple p v) -> p <> "=" <> v)
 
 instance combRouterify :: Combinators Routerify where
   emptyVal = Routerify (const mempty)
