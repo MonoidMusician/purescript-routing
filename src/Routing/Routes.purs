@@ -1,25 +1,26 @@
 module Routing.Routes where
 
 import Prelude
-import Routing.Match.Class (class MatchClass, end, int, lit)
 
 import Control.Apply (applyFirst, applySecond)
 import Control.Plus (empty, (<|>))
-import Data.Array (fromFoldable)
 import Data.Either (hush)
 import Data.Foldable (foldMap)
 import Data.Functor.Contravariant (class Contravariant)
 import Data.Lens (_Just, _Nothing, preview, review)
 import Data.Lens.Prism (prism', only)
 import Data.Lens.Types (Prism')
-import Data.Map (singleton, toUnfoldable)
+import Data.List (List(..), (:))
+import Data.Map (isEmpty, singleton, toUnfoldable)
 import Data.Maybe (Maybe(..))
 import Data.Monoid (mempty)
 import Data.Newtype (class Newtype, unwrap)
-import Data.String (joinWith)
+import Data.String (drop)
 import Data.Tuple (Tuple(..))
+import Partial.Unsafe (unsafePartialBecause)
 import Routing (match)
 import Routing.Match (Match)
+import Routing.Match.Class (class MatchClass, end, int, lit)
 import Routing.Types (Route, RoutePart(..))
 
 class Combinators c where
@@ -108,10 +109,27 @@ loc = _Home <\> dir
 parseloc :: String -> Location
 parseloc = match loc >>> hush >>> join
 
+showroute :: Route -> String
+showroute r = go r
+  where
+    asList = id :: List ~> List
+    go = case _ of
+      Nil -> ""
+      Path p : tail ->
+        p <> "/" <> go tail
+      whole@(Query q : tail)
+        | isEmpty q -> go tail
+        | otherwise ->
+          "?" <> drop 1 (goquery whole)
+    goquery =
+      unsafePartialBecause
+        "query strings should not contain path elements"
+        case _ of
+          Nil -> ""
+          Query q : tail ->
+            showquery q <> goquery tail
+    showquery = toUnfoldable >>> asList >>> foldMap
+      \(Tuple p v) -> "&" <> p <> "=" <> v
+
 showloc :: Location -> String
-showloc l =
-  joinWith "/" $ fromFoldable $ unwrap (loc :: Routerify Location) l <#>
-    case _ of
-      Path p -> p
-      Query q -> "?" <> joinWith "&"
-        (toUnfoldable q <#> \(Tuple p v) -> p <> "=" <> v)
+showloc = unwrap (loc :: Routerify Location) >>> showroute
