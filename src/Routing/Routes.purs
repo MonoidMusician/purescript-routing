@@ -1,6 +1,6 @@
 module Routing.Routes where
 
-import Control.Apply (applyFirst, applySecond)
+import Control.Apply (applyFirst, applySecond, lift2)
 import Control.Plus (empty, (<|>))
 import Data.Array (fromFoldable)
 import Data.Bifunctor (bimap)
@@ -37,19 +37,19 @@ class Combinators c where
   -- | The url may include this but it will not be generated.
   -- | This has different semantics for matching versus displaying ...
   allowed :: c Unit -> c Unit
-  -- | (<||>) C.f. Control.Alt.alt.
+  -- | `(<||>)` C.f. Control.Alt.alt.
   eitherOr :: forall a. c a -> c a -> c a
-  -- | (<:>) A sort of map that works either covariantly or contravariantly with
-  -- | a sort of partial isomorphism (c must be like an error monad in the
+  -- | `(<:>)` A sort of map that works either covariantly or contravariantly
+  -- | with a sort of partial isomorphism (c must be like an error monad in the
   -- | latter case), so parsing is guaranteed to put a value into the `Prism'`
   -- | and routing may possibly match the prismic case.
   prismMap :: forall a b. Prism' a b -> (c b -> c a)
-  -- | (</>) Alternate applicative definition that suits this application better.
+  -- | `(</>)` Alternate definition of an applicative that suits this use better.
   withCurry :: forall a b. c a -> c b -> c (Tuple a b)
-  -- | (/>) C.f. Control.Apply.applySecond. Need a unit value to provide it
+  -- | `(/>)` C.f. Control.Apply.applySecond. Need a unit value to provide it
   -- | contravariantly.
   andThen :: forall b. c Unit -> c b -> c b
-  -- | (</) C.f. Control.Apply.applyFirst.
+  -- | `(</)` C.f. Control.Apply.applyFirst.
   before :: forall a. c a -> c Unit -> c a
 
 infixl 3 eitherOr as <||>
@@ -65,25 +65,25 @@ instance combmatch :: Combinators Match where
   allowed f = optional f
   eitherOr = (<|>)
   prismMap p = map (review p)
-  withCurry a b = Tuple <$> a <*> b
+  withCurry = lift2 Tuple
   andThen = applySecond
   before = applyFirst
 
 -- | A contravariant functor for building up a route to be converted to a string.
-newtype Routerify a = Routerify (a -> V (Free String) Route)
-derive instance newtypeRouterify :: Newtype (Routerify a) _
+newtype RouteBuilder a = RouteBuilder (a -> V (Free String) Route)
+derive instance newtypeRouteBuilder :: Newtype (RouteBuilder a) _
 
-instance contrafunctorRouterify :: Contravariant Routerify where
-  cmap f (Routerify p) = Routerify (p <<< f)
+instance contrafunctorRouteBuilder :: Contravariant RouteBuilder where
+  cmap f (RouteBuilder p) = RouteBuilder (p <<< f)
 
-instance combRouterify :: Combinators Routerify where
-  emptyFail = Routerify (const (invalid (free "no match")))
-  emptySuccess = Routerify (const (pure mempty))
+instance combRouteBuilder :: Combinators RouteBuilder where
+  emptyFail = RouteBuilder (const (invalid (free "no match")))
+  emptySuccess = RouteBuilder (const (pure mempty))
   allowed _ = emptySuccess
-  eitherOr (Routerify l) (Routerify r) = Routerify \a -> l a <|> r a
-  prismMap p (Routerify r) = Routerify
+  eitherOr (RouteBuilder l) (RouteBuilder r) = RouteBuilder \a -> l a <|> r a
+  prismMap p (RouteBuilder r) = RouteBuilder
     (preview p >>> maybe (invalid (free "prism failed to match")) r)
-  withCurry (Routerify l) (Routerify r) = Routerify
+  withCurry (RouteBuilder l) (RouteBuilder r) = RouteBuilder
     (bimap l r >>> uncurry append)
   andThen l r = cmap (Tuple unit) (withCurry l r)
   before l r = cmap (Tuple <@> unit) (withCurry l r)
@@ -91,26 +91,26 @@ instance combRouterify :: Combinators Routerify where
 ppPath :: forall a e. Applicative a => Applicative e => String -> a (e RoutePart)
 ppPath = pure <<< pure <<< Path
 
--- | Routerify also can provide the same methods in `MatchClass`.
-instance matchclassRouterify :: MatchClass Routerify where
+-- | RouteBuilder also can provide the same methods in `MatchClass`.
+instance matchclassRouteBuilder :: MatchClass RouteBuilder where
   -- | Add a URL part.
-  lit = Routerify <<< const <<< ppPath
+  lit = RouteBuilder <<< const <<< ppPath
   -- | Show a `Number` as a URL part.
-  num = Routerify (ppPath <<< show)
+  num = RouteBuilder (ppPath <<< show)
   -- | Show an `Int` as a URL part.
-  int = Routerify (ppPath <<< show)
+  int = RouteBuilder (ppPath <<< show)
   -- | Show a `Boolean` as a URL part ("true" and "false").
-  bool = Routerify (ppPath <<< if _ then "true" else "false")
+  bool = RouteBuilder (ppPath <<< if _ then "true" else "false")
   -- | Show a `String` as a URL part.
-  str = Routerify (ppPath)
+  str = RouteBuilder (ppPath)
   -- | No-op, would have semantic value when matching.
-  end = Routerify (const (pure empty))
+  end = RouteBuilder (const (pure empty))
   -- | Provide an error message.
-  fail = Routerify <<< const <<< invalid <<< free
+  fail = RouteBuilder <<< const <<< invalid <<< free
   -- | Show a single parameter.
-  param p = Routerify (pure <<< pure <<< Query <<< singleton p)
+  param p = RouteBuilder (pure <<< pure <<< Query <<< singleton p)
   -- | Show a bunch of parameters.
-  params = Routerify (pure <<< pure <<< Query)
+  params = RouteBuilder (pure <<< pure <<< Query)
 
 -- | A sample ADT for a location.
 data Locations
@@ -137,18 +137,22 @@ _Project = _Right <<< prism' Project case _ of
 _NotFound :: Prism' Location String
 _NotFound = _Left
 
--- | A slash value.
+-- | A slash separating parts of a path.
 slash :: forall m. MatchClass m => m Unit
 slash = lit ""
 -- | Prefer a slash prefixing the combinator.
-slashish :: forall m a. Combinators m => MatchClass m => m a -> m a
-slashish m = slash /> m <||> m
+slash' :: forall m a. Combinators m => MatchClass m => m a -> m a
+slash' m = slash /> m <||> m
 -- | A directory ends with a slash.
 dir :: forall m. Combinators m => MatchClass m => m Unit
 dir = slash /> end
 -- | This may end with a slash.
-dirish :: forall m. Combinators m => MatchClass m => m Unit
-dirish = end <||> dir
+dir' :: forall m. Combinators m => MatchClass m => m Unit
+dir' = end <||> dir
+-- | Surrounds a prismic route with `slash'` and `dir'`.
+route :: forall b a m. Combinators m => MatchClass m => Prism' a b -> m b -> m a
+route p r = p <:> slash' (r </ dir')
+infix 4 route as <=/../>
 -- | The url should include this (i.e. it will be printed), but it does not have
 -- | to.
 optional :: forall m. Combinators m => MatchClass m => m Unit -> m Unit
@@ -168,10 +172,10 @@ discard a f = a <||> f unit
 -- |   - `_NotFound` maps to `404` (idem), but can represent any other location.
 loc :: forall m. Combinators m => MatchClass m => m Location
 loc = do
-  _Home      <:> slashish (allowed (lit "home") </ dirish)
-  _Dashboard <:> slashish (lit "dashboard"      </ dirish)
-  _Project   <:> slashish (lit "project" /> int </ dirish)
-  _NotFound  <:> slashish match404
+  _Home      <=/../> allowed (lit "home")
+  _Dashboard <=/../> lit "dashboard"
+  _Project   <=/../> lit "project" /> int
+  _NotFound  <=/../> match404
   where
     match404 = do
       -- "404" --> 404
@@ -193,6 +197,7 @@ showroute r = go r
     asList = id :: List ~> List
     go = case _ of
       Nil -> ""
+      Path p : Nil -> p
       Path p : tail ->
         p <> "/" <> go tail
       whole@(Query q : tail)
@@ -213,7 +218,7 @@ showroute r = go r
 -- | `parseloc`. `_NotFound` gets rendered as "/404/...".
 -- | Errors are, somewhat unforunately, printed into the result string ...
 showloc :: Location -> String
-showloc = unwrap (loc :: Routerify Location) >>> flip unV showroute \(Free e) ->
+showloc = unwrap (loc :: RouteBuilder Location) >>> flip unV showroute \(Free e) ->
   showerrorzies e
 
 showerrorzies :: List (List String) -> String
