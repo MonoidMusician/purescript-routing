@@ -4,12 +4,14 @@ import Prelude
 
 import Control.Alt (class Alt, (<|>))
 import Control.Alternative (class Alternative)
-import Control.Plus (class Plus)
+import Control.Apply (lift2, applyFirst, applySecond)
+import Control.Plus (class Plus, empty)
 
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Int (fromString)
 import Data.List (List(..), reverse)
+import Data.Lens.Prism (review)
 import Data.Map as M
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
@@ -19,6 +21,7 @@ import Data.Validation.Semiring (V, invalid, unV)
 
 import Global (readFloat, isNaN)
 
+import Routing.Combinators (class Combinators, optional)
 import Routing.Match.Class (class MatchClass)
 import Routing.Match.Error (MatchError(..), showMatchError)
 import Routing.Types (Route, RoutePart(..))
@@ -124,6 +127,16 @@ instance matchApply :: Apply Match where
 
 instance matchApplicative :: Applicative Match where
   pure a = Match \r -> pure $ Tuple r a
+
+instance combinatorsMatch :: Combinators Match where
+  emptyFail = empty
+  emptySuccess = Match (pure <<< (Tuple <@> unit))
+  allowed f = optional f
+  eitherOr = (<|>)
+  prismMap p = map (review p)
+  withCurry = lift2 Tuple
+  andThen = applySecond
+  before = applyFirst
 
 -- | Matches list of matchers. Useful when argument can easy fail (not `str`)
 -- | returns `Match Nil` if no matches

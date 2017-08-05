@@ -35,3 +35,7 @@ class MatchClass f where
   end :: f Unit
 
   fail :: forall a. String -> f a
+
+-- | A slash separating parts of a path.
+slash :: forall m. MatchClass m => m Unit
+slash = lit ""
