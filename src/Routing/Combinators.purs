@@ -1,9 +1,12 @@
 module Routing.Combinators where
 
+import Data.Function ((<<<))
 import Data.Functor ((<@>))
-import Data.Lens.Prism (Prism', only)
+import Data.Lens.Prism (Prism', only, prism')
 import Data.List (List)
-import Data.Tuple (Tuple)
+import Data.Maybe (Maybe(..))
+import Data.Tuple (Tuple(..), uncurry)
+import Data.Tuple.Nested (Tuple2, tuple2, uncurry2)
 import Data.Unit (Unit, unit)
 import Routing.Match.Class (class MatchClass, end, lit, slash)
 
@@ -38,6 +41,10 @@ infix 5 prismMap as <:>
 infixr 6 withCurry as </>
 infixl 7 andThen as />
 infixl 7 before as </
+
+endCurry :: forall c a b. Combinators c => c a -> c b -> c (Tuple2 a b)
+endCurry ca cb = prism' (uncurry tuple2) (Just <<< uncurry2 Tuple) <:> ca </> cb
+infixr 6 endCurry as <&>
 
 -- | Prefer a slash prefixing the combinator.
 slash' :: forall m a. Combinators m => MatchClass m => m a -> m a
