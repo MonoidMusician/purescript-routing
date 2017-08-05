@@ -138,18 +138,16 @@ instance combinatorsMatch :: Combinators Match where
   andThen = applySecond
   before = applyFirst
 
--- | Matches list of matchers. Useful when argument can easy fail (not `str`)
--- | returns `Match Nil` if no matches
-list :: forall a. Match a -> Match (List a)
-list (Match r2a) =
-  Match $ go Nil
-  where go :: List a -> Route -> V (Free MatchError) (Tuple Route (List a))
-        go accum r =
-          unV
-          (const $ pure (Tuple r (reverse accum)))
-          (\(Tuple rs a) -> go (Cons a accum) rs)
-          (r2a r)
-
+  -- | Matches list of matchers. Useful when argument can easy fail (not `str`)
+  -- | returns `Match Nil` if no matches
+  list (Match r2a) =
+    Match $ go Nil
+    where
+      go accum r =
+        unV
+        (const $ pure (Tuple r (reverse accum)))
+        (\(Tuple rs a) -> go (Cons a accum) rs)
+        (r2a r)
 
 
 

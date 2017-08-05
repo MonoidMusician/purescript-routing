@@ -39,6 +39,7 @@ instance combRouteBuilder :: Combinators RouteBuilder where
     (bimap l r >>> uncurry append)
   andThen l r = cmap (Tuple unit) (withCurry l r)
   before l r = cmap (Tuple <@> unit) (withCurry l r)
+  list (RouteBuilder r) = RouteBuilder \as -> foldMap r as
 
 ppPath :: forall a e. Applicative a => Applicative e => String -> a (e RoutePart)
 ppPath = pure <<< pure <<< Path

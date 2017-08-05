@@ -2,6 +2,7 @@ module Routing.Combinators where
 
 import Data.Functor ((<@>))
 import Data.Lens.Prism (Prism', only)
+import Data.List (List)
 import Data.Tuple (Tuple)
 import Data.Unit (Unit, unit)
 import Routing.Match.Class (class MatchClass, end, lit, slash)
@@ -30,6 +31,7 @@ class Combinators c where
   andThen :: forall b. c Unit -> c b -> c b
   -- | `(</)` C.f. Control.Apply.applyFirst.
   before :: forall a. c a -> c Unit -> c a
+  list :: forall a. c a -> c (List a)
 
 infixl 3 eitherOr as <||>
 infix 5 prismMap as <:>
