@@ -1,27 +1,19 @@
 module Routing.Routes where
 
-import Routing.Combinators (class Combinators, allowed, discard, matchlit, (/>), (<:>), (<=/../>))
-
 import Data.Array (fromFoldable)
 import Data.Either (Either(..), either)
-import Data.Foldable (foldMap)
 import Data.Lens.Prism (prism', only)
 import Data.Lens.Prism.Either (_Left, _Right)
 import Data.Lens.Types (Prism')
-import Data.List (List(..), (:))
-import Data.Map (isEmpty, toUnfoldable)
+import Data.List (List)
 import Data.Maybe (Maybe(..))
-import Data.Newtype (unwrap)
 import Data.Semiring.Free (Free(..))
-import Data.String (drop, joinWith)
-import Data.Tuple (Tuple(..))
-import Data.Validation.Semiring (unV)
-import Partial.Unsafe (unsafePartialBecause)
+import Data.String (joinWith)
 import Prelude hiding (discard)
 import Routing (match)
+import Routing.Combinators (class Combinators, allowed, discard, matchlit, (/>), (<:>), (<=/../>))
 import Routing.Match.Class (class MatchClass, int, lit, str)
-import Routing.RouteBuilder (RouteBuilder)
-import Routing.Types (Route, RoutePart(..))
+import Routing.RouteBuilder (build)
 
 -- | A sample ADT for a location.
 data Locations
@@ -73,36 +65,11 @@ loc = do
 parseloc :: String -> Location
 parseloc l = match loc l # either (const (Left ("url_parse_error/" <> l))) id
 
--- | Show a `Route` as a `String`.
-showroute :: Route -> String
-showroute r = go r
-  where
-    asList = id :: List ~> List
-    go = case _ of
-      Nil -> ""
-      Path p : Nil -> p
-      Path p : tail ->
-        p <> "/" <> go tail
-      whole@(Query q : tail)
-        | isEmpty q -> go tail
-        | otherwise ->
-          "?" <> drop 1 (goquery whole)
-    goquery =
-      unsafePartialBecause
-        "query strings should not contain path elements"
-        case _ of
-          Nil -> ""
-          Query q : tail ->
-            showquery q <> goquery tail
-    showquery = toUnfoldable >>> asList >>> foldMap
-      \(Tuple p v) -> "&" <> p <> "=" <> v
-
 -- | Show a `Location` as a `String`. Should be the partial inverse of
 -- | `parseloc`. `_NotFound` gets rendered as "/404/...".
 -- | Errors are, somewhat unforunately, printed into the result string ...
 showloc :: Location -> String
-showloc = unwrap (loc :: RouteBuilder Location) >>> flip unV showroute \(Free e) ->
-  showerrorzies e
+showloc = build loc >>> flip either id \(Free e) -> showerrorzies e
 
 showerrorzies :: List (List String) -> String
 showerrorzies e = joinWith "; " $ fromFoldable $ joinWith ", " <<< fromFoldable <$> e

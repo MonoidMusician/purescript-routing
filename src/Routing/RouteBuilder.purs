@@ -1,16 +1,21 @@
-module Routing.RouteBuilder (RouteBuilder(..)) where
+module Routing.RouteBuilder (RouteBuilder(..), build, format) where
 
 import Control.Plus (empty, (<|>))
 import Data.Bifunctor (bimap)
+import Data.Either (Either(..))
+import Data.Foldable (foldMap)
 import Data.Functor.Contravariant (class Contravariant, cmap)
 import Data.Lens (preview)
-import Data.Map (singleton)
+import Data.List (List(..), (:))
+import Data.Map (isEmpty, singleton, toUnfoldable)
 import Data.Maybe (maybe)
 import Data.Monoid (mempty)
-import Data.Newtype (class Newtype)
+import Data.Newtype (class Newtype, unwrap)
 import Data.Semiring.Free (Free, free)
+import Data.String (drop)
 import Data.Tuple (Tuple(..), uncurry)
-import Data.Validation.Semiring (V, invalid)
+import Data.Validation.Semiring (V, invalid, unV)
+import Partial.Unsafe (unsafePartialBecause)
 import Prelude hiding (discard)
 import Routing.Combinators (class Combinators, emptySuccess, withCurry)
 import Routing.Match.Class (class MatchClass)
@@ -58,3 +63,31 @@ instance matchclassRouteBuilder :: MatchClass RouteBuilder where
   param p = RouteBuilder (pure <<< pure <<< Query <<< singleton p)
   -- | Show a bunch of parameters.
   params = RouteBuilder (pure <<< pure <<< Query)
+
+-- | Show a `Route` as a `String`.
+format :: Route -> String
+format r = go r
+  where
+    asList = id :: List ~> List
+    go = case _ of
+      Nil -> ""
+      Path p : Nil -> p
+      Path p : tail ->
+        p <> "/" <> go tail
+      whole@(Query q : tail)
+        | isEmpty q -> go tail
+        | otherwise ->
+          "?" <> drop 1 (goquery whole)
+    goquery =
+      unsafePartialBecause
+        "query strings should not contain path elements"
+        case _ of
+          Nil -> ""
+          Query q : tail ->
+            showquery q <> goquery tail
+    showquery = toUnfoldable >>> asList >>> foldMap
+      \(Tuple p v) -> "&" <> p <> "=" <> v
+
+-- | Build a value, returning a string or an error.
+build :: forall a. RouteBuilder a -> a -> Either (Free String) String
+build builder = unwrap builder >>> unV Left (Right <<< format)
