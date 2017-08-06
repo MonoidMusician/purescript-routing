@@ -49,6 +49,3 @@ strengthen l = withSemiIso l \sa bt -> iso (unwrap <<< sa) (unwrap <<< bt)
 
 constant :: forall f a. Applicative f => a -> SemiIso' f Unit a
 constant a = semiIso (pure (pure a)) (pure (pure unit))
-
-reconstant :: forall f a. Applicative f => a -> SemiIso' f a Unit
-reconstant a = semiIso (pure (pure unit)) (pure (pure a))

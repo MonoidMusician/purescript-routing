@@ -5,7 +5,7 @@ import Data.Bifunctor (bimap)
 import Data.Either (Either(..), either)
 import Data.Foldable (foldMap)
 import Data.Functor.Contravariant (class Contravariant, cmap)
-import Data.Lens.SemiIso (apply)
+import Data.Lens.SemiIso (unapply)
 import Data.List (List(..), (:))
 import Data.Map (isEmpty, singleton, toUnfoldable)
 import Data.Monoid (mempty)
@@ -33,7 +33,7 @@ instance combRouteBuilder :: Combinators RouteBuilder where
   allowed _ = emptySuccess
   eitherOr (RouteBuilder l) (RouteBuilder r) = RouteBuilder \a -> l a <|> r a
   semiMap p (RouteBuilder r) = RouteBuilder
-    (apply p >>> either (invalid <<< free) r)
+    (unapply p >>> either (invalid <<< free) r)
   withCurry (RouteBuilder l) (RouteBuilder r) = RouteBuilder
     (bimap l r >>> uncurry append)
   andThen l r = cmap (Tuple unit) (withCurry l r)

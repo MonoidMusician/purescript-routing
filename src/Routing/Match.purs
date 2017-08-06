@@ -1,6 +1,6 @@
 module Routing.Match where
 
-import Prelude
+import Prelude hiding (apply)
 
 import Control.Alt (class Alt, (<|>))
 import Control.Alternative (class Alternative)
@@ -9,7 +9,7 @@ import Control.Plus (class Plus, empty)
 import Data.Either (Either(..), either)
 import Data.Foldable (foldl)
 import Data.Int (fromString)
-import Data.Lens.SemiIso (unapply)
+import Data.Lens.SemiIso (apply)
 import Data.List (List(..), reverse)
 import Data.Map as M
 import Data.Maybe (Maybe(..))
@@ -131,7 +131,7 @@ instance combinatorsMatch :: Combinators Match where
   allowed f = optional f
   eitherOr = (<|>)
   semiMap p (Match r2a) = Match \r -> unV invalid (uncurry runiso) (r2a r)
-    where runiso rs = unapply p >>> either (invalid <<< free <<< Fail) (pure <<< Tuple rs)
+    where runiso rs = apply p >>> either (invalid <<< free <<< Fail) (pure <<< Tuple rs)
   withCurry = lift2 Tuple
   andThen = applySecond
   before = applyFirst

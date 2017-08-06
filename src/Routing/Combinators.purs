@@ -2,9 +2,9 @@ module Routing.Combinators where
 
 import Data.Either (Either)
 import Data.Functor ((<@>))
-import Data.Lens.Iso (iso)
-import Data.Lens.Prism (APrism')
-import Data.Lens.SemiIso (SemiIso', fromPrism, note, reconstant)
+import Data.Lens.Iso (iso, re)
+import Data.Lens.Prism (APrism', only)
+import Data.Lens.SemiIso (SemiIso', fromPrism, note)
 import Data.List (List)
 import Data.Tuple (Tuple(..), uncurry)
 import Data.Tuple.Nested (Tuple2, tuple2, uncurry2)
@@ -23,11 +23,9 @@ class Combinators c where
   allowed :: c Unit -> c Unit
   -- | `(<||>)` C.f. Control.Alt.alt.
   eitherOr :: forall a. c a -> c a -> c a
-  -- | `(<:>)` A sort of map that works either covariantly or contravariantly
-  -- | with a sort of partial isomorphism (c must be like an error monad in the
-  -- | latter case), so parsing is guaranteed to put a value into the `Prism'`
-  -- | and routing may possibly match the prismic case.
-  semiMap :: forall a b. SemiIso' (Either String) a b -> (c b -> c a)
+  -- | `(<=>)` A sort of map that works either covariantly or contravariantly
+  -- | with a partial isomorphism.
+  semiMap :: forall a b. SemiIso' (Either String) a b -> (c a -> c b)
   -- | `(</>)` Alternate definition of an applicative that suits this use better.
   withCurry :: forall a b. c a -> c b -> c (Tuple a b)
   -- | `(/>)` C.f. Control.Apply.applySecond. Need a unit value to provide it
@@ -44,11 +42,13 @@ infixr 6 withCurry as </>
 infixl 7 andThen as />
 infixl 7 before as </
 
+-- | Parsing is guaranteed to put a value into the `Prism'`
+-- | and routing may possibly match the prismic case.
 prismMap :: forall c a b. Combinators c => APrism' a b -> (c b -> c a)
-prismMap l = semiMap (note "prism failed" (fromPrism l))
+prismMap l = semiMap (re (note "prism failed" (fromPrism l)))
 
 endCurry :: forall c a b. Combinators c => c a -> c b -> c (Tuple2 a b)
-endCurry ca cb = iso (uncurry2 Tuple) (uncurry tuple2) <=> ca </> cb
+endCurry ca cb = iso (uncurry tuple2) (uncurry2 Tuple) <=> ca </> cb
 infixr 6 endCurry as <&>
 
 -- | Prefer a slash prefixing the combinator.
@@ -75,7 +75,7 @@ optional = eitherOr <@> emptySuccess
 
 -- | Match a literal and return it as a `String`.
 matchlit :: forall m. Combinators m => MatchClass m => String -> m String
-matchlit v = reconstant v <=> lit v
+matchlit v = only v <:> lit v
 
 -- | Join a list of combinators with `eitherOr`.
 discard :: forall m a. Combinators m => m a -> (Unit -> m a) -> m a

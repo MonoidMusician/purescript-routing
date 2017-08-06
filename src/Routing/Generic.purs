@@ -7,6 +7,7 @@ import Data.Either (Either)
 import Data.Generic.Rep (class Generic, Argument(..), Constructor(..), Field(Field), NoArguments(..), NoConstructors, Product(Product), Rec(..), Sum(Inr, Inl), from, to)
 import Data.Lens (Iso', Prism', _Just, _Left, _Nothing, _Right, iso, prism')
 import Data.Lens.Iso.Newtype (_Newtype)
+import Data.Lens.SemiIso (constant)
 import Data.List (List)
 import Data.Map (Map)
 import Data.Maybe (Maybe(..))
@@ -17,7 +18,7 @@ import Data.Symbol (class IsSymbol, reflectSymbol)
 import Data.Tuple (Tuple(..))
 import Data.Variant (SProxy(..), Variant, contract, expand, inj, prj)
 import Data.Variant.Internal (class Contractable, class VariantTags)
-import Routing.Combinators (class Combinators, emptyFail, emptySuccess, list, (/>), (</>), (<:>), (<||>))
+import Routing.Combinators (class Combinators, emptyFail, emptySuccess, list, (/>), (</>), (<:>), (<=>), (<||>))
 import Routing.Match.Class (class MatchClass, bool, int, lit, num, param, params, str)
 import Type.Row (class ListToRow, class RowLacks, class RowToList, Cons, Nil, RLProxy(..), RProxy(..), kind RowList)
 
@@ -148,12 +149,8 @@ _rowcons s = iso
   (\r -> Tuple (R.get s r) (R.delete s r))
   (\(Tuple val r) -> R.insert s val r)
 
--- | Type a should only have one inhabitant. Saves an `Eq` constraint versus `only`.
-solely :: forall a. a -> Iso' a Unit
-solely a = iso (const unit) (const a)
-
 instance routingRecordNil :: RoutingRecord () Nil where
-  routingRecordL _ = solely {} <:> emptySuccess
+  routingRecordL _ = constant {} <=> emptySuccess
 
 instance routingRecordCons ::
   ( RowListStep s String r' r n rl' (Cons s String rl')
@@ -178,7 +175,7 @@ instance routingGenericRepNoConstructors :: RoutingGeneric NoConstructors where
   routingGenericRep = emptyFail
 
 instance routingGenericRepNoArguments :: RoutingGeneric NoArguments where
-  routingGenericRep = solely NoArguments <:> emptySuccess
+  routingGenericRep = constant NoArguments <=> emptySuccess
 
 _Rec :: forall a. Iso' (Rec a) a
 _Rec = iso (\(Rec a) -> a) Rec
