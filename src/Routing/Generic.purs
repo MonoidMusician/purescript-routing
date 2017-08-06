@@ -1,0 +1,224 @@
+module Routing.Generic where
+
+import Prelude
+
+import Data.Array (fromFoldable, toUnfoldable)
+import Data.Generic.Rep (class Generic, Argument(..), Constructor(..), Field(Field), NoArguments(..), NoConstructors, Product(Product), Sum(Inr, Inl), from, to)
+import Data.Lens (Prism', Iso', _Just, _Nothing, iso, prism')
+import Data.Lens.Iso.Newtype (_Newtype)
+import Data.List (List)
+import Data.Map (Map)
+import Data.Maybe (Maybe(..))
+import Data.Newtype (class Newtype)
+import Data.Record as R
+import Data.String (toLower)
+import Data.Symbol (class IsSymbol, reflectSymbol)
+import Data.Tuple (Tuple(..))
+import Data.Variant (SProxy(..), Variant, contract, expand, inj, prj)
+import Data.Variant.Internal (class Contractable, class VariantTags)
+import Routing.Combinators (class Combinators, emptyFail, emptySuccess, list, (/>), (</>), (<:>), (<||>))
+import Routing.Match.Class (class MatchClass, bool, int, lit, num, param, params, str)
+import Type.Row (class ListToRow, class RowLacks, class RowToList, Cons, Nil, RLProxy(..), RProxy(..), kind RowList)
+
+class Routing a where
+  routing :: forall c. Combinators c => MatchClass c => c a
+
+instance routingBoolean :: Routing Boolean where
+  routing = bool
+
+instance routingInt :: Routing Int where
+  routing = int
+
+instance routingNumber :: Routing Number where
+  routing = num
+
+instance routingString :: Routing String where
+  routing = str
+
+instance routingMaybe :: Routing a => Routing (Maybe a) where
+  routing = _Just <:> routing <||> _Nothing <:> emptySuccess
+
+newtype Parameter (s :: Symbol) a = Parameter a
+derive instance newtypeParameter :: Newtype (Parameter s a) _
+derive newtype instance eqParameter :: Eq a => Eq (Parameter s a)
+
+instance routingParameter :: (IsSymbol s) => Routing (Parameter s String) where
+  routing = _Newtype <:> param (reflectSymbol (SProxy :: SProxy s))
+
+instance routingList :: Routing a => Routing (List a) where
+  routing = list routing
+
+instance routingArray :: Routing a => Routing (Array a) where
+  routing = iso toUnfoldable fromFoldable <:> (list routing)
+
+instance routingParameters :: Routing (Map String String) where
+  routing = params
+
+instance routingVariant :: (RoutingVariant r rl) => Routing (Variant r) where
+  routing = routingVariantL (RLProxy :: RLProxy rl)
+
+class (RowToList r rl, ListToRow rl r) <= RoutingVariant (r :: # Type) (rl :: RowList) | rl -> r where
+  routingVariantL :: forall c. Combinators c => MatchClass c => RLProxy rl -> c (Variant r)
+
+instance routingVariantNil :: RoutingVariant () Nil where
+  routingVariantL _ = emptyFail
+
+_variant ::
+  forall s t r r'.
+    IsSymbol s =>
+    RowCons s t r r' =>
+  SProxy s -> Prism' (Variant r') t
+_variant s = prism' (inj s) (prj s)
+_recast ::
+  forall s t r r' n.
+    RowCons s t r' r =>
+    Union r' n r => -- duh
+    Contractable r r' =>
+  SProxy s -> RProxy n -> Prism' (Variant r) (Variant r')
+_recast _ _ = prism' expand contract
+
+class
+  ( IsSymbol s
+  , RowCons s t r' r
+  , RowLacks s r'
+  , Union r' n r
+  , RowToList r' rl'
+  , ListToRow rl' r'
+  , RowToList r rl
+  , ListToRow rl r
+  , Contractable r r'
+  ) <= RowListStep s t r' r n rl' rl | -> s t r' r n rl' rl
+
+instance rowListStep ::
+  ( IsSymbol s
+  , RowCons s t r' r
+  , RowLacks s r'
+  , Union r' n r
+  , RowToList r' rl'
+  , ListToRow rl' r'
+  , RowToList r (Cons s t rl')
+  , ListToRow (Cons s t rl') r
+  , Contractable r r'
+  ) => RowListStep s t r' r n rl' (Cons s t rl')
+
+instance routingVariantCons ::
+  ( RowListStep s t r' r n rl' (Cons s t rl')
+  , Routing t
+  , RoutingVariant r' rl'
+  , VariantTags rl'
+  ) => RoutingVariant r (Cons s t rl')
+  where
+    routingVariantL _ = this <||> other
+      where
+        s = (SProxy :: SProxy s)
+        this = _variant s <:> routing
+        other = _recast s (RProxy :: RProxy n) <:>
+          routingVariantL (RLProxy :: RLProxy rl')
+
+class (RowToList r rl, ListToRow rl r) <= RoutingRecord (r :: # Type) (rl :: RowList) | rl -> r where
+  routingRecordL :: forall c. Combinators c => MatchClass c => RLProxy rl -> c (Record r)
+
+_rowcons ::
+  forall s t r r'.
+    IsSymbol s =>
+    RowCons s t r' r =>
+    RowLacks s r' =>
+  SProxy s -> Iso' (Record r) (Tuple t (Record r'))
+_rowcons s = iso
+  (\r -> Tuple (R.get s r) (R.delete s r))
+  (\(Tuple val r) -> R.insert s val r)
+
+-- | Type a should only have one inhabitant. Saves an `Eq` constraint versus `only`.
+solely :: forall a. a -> Iso' a Unit
+solely a = iso (const unit) (const a)
+
+instance routingRecordNil :: RoutingRecord () Nil where
+  routingRecordL _ = solely {} <:> emptySuccess
+
+instance routingRecordCons ::
+  ( RowListStep s String r' r n rl' (Cons s String rl')
+  , RoutingRecord r' rl'
+  , RowLacks s r' -- FIXME: why?
+  , Routing String
+  ) => RoutingRecord r (Cons s String rl')
+  where
+    routingRecordL _ = _rowcons s <:> this </> rest
+      where
+        this = param (reflectSymbol s)
+        rest = routingRecordL (RLProxy :: RLProxy rl')
+        s = SProxy :: SProxy s
+
+class RoutingGeneric rep where
+  routingGenericRep :: forall c. Combinators c => MatchClass c => c rep
+
+transformName :: forall s. IsSymbol s => SProxy s -> String
+transformName = reflectSymbol >>> toLower
+
+instance routingGenericRepNoConstructors :: RoutingGeneric NoConstructors where
+  routingGenericRep = emptyFail
+
+instance routingGenericRepNoArguments :: RoutingGeneric NoArguments where
+  routingGenericRep = solely NoArguments <:> emptySuccess
+
+_Field :: forall name a. Iso' (Field name a) a
+_Field = iso (\(Field a) -> a) Field
+
+instance routingGenericRepField ::
+  ( RoutingGeneric a
+  , IsSymbol name
+  ) => RoutingGeneric (Field name a) where
+  routingGenericRep = _Field <:> lit path /> routingGenericRep
+    where path = transformName (SProxy :: SProxy name)
+
+_Constructor :: forall name a. Iso' (Constructor name a) a
+_Constructor = iso (\(Constructor a) -> a) Constructor
+
+instance routingGenericRepConstructor ::
+  ( RoutingGeneric a
+  , IsSymbol name
+  ) => RoutingGeneric (Constructor name a) where
+  routingGenericRep = _Constructor <:> lit path /> routingGenericRep
+    where path = transformName (SProxy :: SProxy name)
+
+_Argument :: forall a. Iso' (Argument a) a
+_Argument = iso (\(Argument a) -> a) Argument
+
+instance routingGenericRepArgument ::
+  ( Routing a
+  ) => RoutingGeneric (Argument a) where
+  routingGenericRep = _Argument <:> routing
+
+_Inl :: forall l r. Prism' (Sum l r) l
+_Inl = prism' Inl case _ of
+  Inl l -> Just l
+  _ -> Nothing
+
+_Inr :: forall l r. Prism' (Sum l r) r
+_Inr = prism' Inr case _ of
+  Inr r -> Just r
+  _ -> Nothing
+
+instance routingSum ::
+  ( RoutingGeneric a
+  , RoutingGeneric b
+  ) => RoutingGeneric (Sum a b)
+  where
+    routingGenericRep = _Inl <:> routingGenericRep <||> _Inr <:> routingGenericRep
+
+_Product :: forall l r. Iso' (Product l r) (Tuple l r)
+_Product = iso
+  (\(Product l r) -> Tuple l r)
+  (\(Tuple l r) -> Product l r)
+
+instance routingProduct ::
+  ( RoutingGeneric a
+  , RoutingGeneric b
+  ) => RoutingGeneric (Product a b)
+  where
+    routingGenericRep = _Product <:> routingGenericRep </> routingGenericRep
+
+_Generic :: forall a rep. Generic a rep => Iso' a rep
+_Generic = iso from to
+
+routingGeneric :: forall a rep c. Generic a rep => RoutingGeneric rep => Combinators c => MatchClass c => c a
+routingGeneric = _Generic <:> routingGenericRep
