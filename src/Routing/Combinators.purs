@@ -9,7 +9,7 @@ import Data.List (List)
 import Data.Tuple (Tuple(..), uncurry)
 import Data.Tuple.Nested (Tuple2, tuple2, uncurry2)
 import Data.Unit (Unit, unit)
-import Routing.Match.Class (class MatchClass, end, lit, slash)
+import Routing.Match.Class (class MatchClass, end, lit, param, slash)
 
 -- | Mostly duplicated operations from elsewhere bundled up to work similar to
 -- | http://www.informatik.uni-marburg.de/~rendel/unparse/rendel10invertible.pdf
@@ -47,6 +47,7 @@ infixl 7 before as </
 prismMap :: forall c a b. Combinators c => APrism' a b -> (c b -> c a)
 prismMap l = semiMap (re (note "prism failed" (fromPrism l)))
 
+-- | End a nested tuple.
 endCurry :: forall c a b. Combinators c => c a -> c b -> c (Tuple2 a b)
 endCurry ca cb = iso (uncurry tuple2) (uncurry2 Tuple) <=> ca </> cb
 infixr 6 endCurry as <&>
@@ -80,3 +81,13 @@ matchlit v = only v <:> lit v
 -- | Join a list of combinators with `eitherOr`.
 discard :: forall m a. Combinators m => m a -> (Unit -> m a) -> m a
 discard a f = a <||> f unit
+
+-- | Use a `Prism'` to parse a parameter into a value or show it.
+paramWith :: forall m a. Combinators m => MatchClass m => APrism' String a -> String -> m a
+paramWith p k = siso <=> param k
+  where siso = note "parsing parameter failed" (fromPrism p)
+
+paramOf :: forall m a. Combinators m => MatchClass m => String -> APrism' String a -> m a
+paramOf k p = paramWith p k
+infix 8 paramOf as ?::
+infix 8 paramOf as &::

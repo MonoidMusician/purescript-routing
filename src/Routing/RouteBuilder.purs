@@ -1,6 +1,7 @@
 module Routing.RouteBuilder (RouteBuilder(..), build, format) where
 
 import Control.Plus (empty, (<|>))
+import Data.Array (fromFoldable)
 import Data.Bifunctor (bimap)
 import Data.Either (Either(..), either)
 import Data.Foldable (foldMap)
@@ -11,11 +12,11 @@ import Data.Map (isEmpty, singleton, toUnfoldable)
 import Data.Monoid (mempty)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Semiring.Free (Free, free)
-import Data.String (drop)
+import Data.String (drop, joinWith)
 import Data.Tuple (Tuple(..), uncurry)
 import Data.Validation.Semiring (V, invalid, unV)
 import Partial.Unsafe (unsafePartialBecause)
-import Prelude hiding (discard, apply)
+import Prelude hiding (discard,apply)
 import Routing.Combinators (class Combinators, emptySuccess, withCurry)
 import Routing.Match.Class (class MatchClass)
 import Routing.Types (Route, RoutePart(..))
@@ -89,5 +90,8 @@ format r = go r
       \(Tuple p v) -> "&" <> p <> "=" <> v
 
 -- | Build a value, returning a string or an error.
-build :: forall a. RouteBuilder a -> a -> Either (Free String) String
-build builder = unwrap builder >>> unV Left (Right <<< format)
+build :: forall a. RouteBuilder a -> a -> Either String String
+build builder = unwrap builder >>> unV (Left <<< showerrorzies) (Right <<< format)
+
+showerrorzies :: Free String -> String
+showerrorzies e = joinWith "; " $ fromFoldable $ joinWith ", " <<< fromFoldable <$> unwrap e

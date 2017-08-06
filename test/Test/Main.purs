@@ -24,7 +24,7 @@ import Test.Assert (ASSERT, assert)
 
 data FooBar
   = Foo Number (M.Map String String)
-  | Bar Boolean (Parameter "bar" String) (Parameter "baz" String)
+  | Bar Boolean (Parameter "bar" String) (Parameter "baz" Int)
   | Baz (List Number)
   | Quux Int
   | End Int
@@ -43,7 +43,7 @@ _Foo = prism' (uncurry Foo) case _ of
   Foo n m -> Just (Tuple n m)
   _ -> Nothing
 
-_Bar :: Prism' FooBar (Tuple3 Boolean (Parameter "bar" String) (Parameter "baz" String))
+_Bar :: Prism' FooBar (Tuple3 Boolean (Parameter "bar" String) (Parameter "baz" Int))
 _Bar = prism' (uncurry3 Bar) case _ of
   Bar b s z -> Just (tuple3 b s z)
   _ -> Nothing
@@ -103,7 +103,7 @@ main = do
   print "Baz: " $ match bidi "baz/123/" -- baz
   print "End: " $ match bidi "end/1" -- end
 
-  let testbar = Bar true (wrap "isbar") (wrap "isbaz")
+  let testbar = Bar true (wrap "isbar") (wrap 42)
   let rndtrpBar = match bidi <$> (build bidi testbar)
   print "Roundtrip Bar: " $ rndtrpBar
   assert $ rndtrpBar == Right (Right testbar)

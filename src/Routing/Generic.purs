@@ -1,13 +1,12 @@
 module Routing.Generic where
 
-import Prelude
-
 import Data.Array (fromFoldable, toUnfoldable)
 import Data.Either (Either)
 import Data.Generic.Rep (class Generic, Argument(..), Constructor(..), Field(Field), NoArguments(..), NoConstructors, Product(Product), Rec(..), Sum(Inr, Inl), from, to)
-import Data.Lens (Iso', Prism', _Just, _Left, _Nothing, _Right, iso, prism')
+import Data.Lens (Iso', Prism', _Just, _Left, _Nothing, _Right, iso, prism', re)
+import Data.Lens.Internal.Retail (Retail(..))
 import Data.Lens.Iso.Newtype (_Newtype)
-import Data.Lens.SemiIso (constant)
+import Data.Lens.SemiIso (ASemiIso', SemiIso', constant, semiIso, weaken)
 import Data.List (List)
 import Data.Map (Map)
 import Data.Maybe (Maybe(..))
@@ -18,12 +17,19 @@ import Data.Symbol (class IsSymbol, reflectSymbol)
 import Data.Tuple (Tuple(..))
 import Data.Variant (SProxy(..), Variant, contract, expand, inj, prj)
 import Data.Variant.Internal (class Contractable, class VariantTags)
+import Prelude hiding (compose)
+import Routing (match)
 import Routing.Combinators (class Combinators, emptyFail, emptySuccess, list, (/>), (</>), (<:>), (<=>), (<||>))
 import Routing.Match.Class (class MatchClass, bool, int, lit, num, param, params, str)
+import Routing.RouteBuilder (build)
 import Type.Row (class ListToRow, class RowLacks, class RowToList, Cons, Nil, RLProxy(..), RProxy(..), kind RowList)
+import Unsafe.Coerce (unsafeCoerce)
 
 class Routing a where
   routing :: forall c. Combinators c => MatchClass c => c a
+
+_Routing :: forall a. Routing a => SemiIso' (Either String) String a
+_Routing = semiIso (match routing) (build routing)
 
 instance routingBoolean :: Routing Boolean where
   routing = bool
@@ -47,8 +53,21 @@ newtype Parameter (s :: Symbol) a = Parameter a
 derive instance newtypeParameter :: Newtype (Parameter s a) _
 derive newtype instance eqParameter :: Eq a => Eq (Parameter s a)
 
-instance routingParameter :: (IsSymbol s) => Routing (Parameter s String) where
-  routing = _Newtype <:> param (reflectSymbol (SProxy :: SProxy s))
+instance routingParameter :: (IsSymbol s, Routing a) => Routing (Parameter s a) where
+  routing = answer <=> param (reflectSymbol (SProxy :: SProxy s))
+    where
+      -- uc :: SemiIso' (Either String) String a -> SemiIso' (Either String) String (Parameter s a)
+      -- uc = unsafeCoerce
+      -- _R = uc _r :: SemiIso' (Either String) String (Parameter s a)
+      _r = _Routing -- :: SemiIso' (Either String) String a
+      _nr = weaken (re _Newtype) -- :: SemiIso' (Either String) a (Parameter s a)
+      Retail f f' = _nr (Retail pure pure)
+      Retail g g' = _r (Retail pure pure)
+      f'' = f <=< g
+      g'' = g' <=< f'
+      --answer :: SemiIso' (Either String) String (Parameter s a)
+      answer = semiIso f'' g''
+      --answer = compose anr ar
 
 instance routingList :: Routing a => Routing (List a) where
   routing = list routing

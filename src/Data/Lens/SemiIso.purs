@@ -15,7 +15,7 @@ import Data.Profunctor.Exposed (class Exposed, expose, merge)
 type SemiIso f s t a b = forall p. Exposed f p => Optic p s t a b
 type SemiIso' f s a = SemiIso f s s a a
 
-type ASemiIso f s t a b = Retail f a b a b -> Retail f a b s t
+type ASemiIso f s t a b = Optic (Retail f a b) s t a b
 type ASemiIso' f s a = ASemiIso f s s a a
 
 semiIso :: forall f s t a b. (s -> f a) -> (b -> f t) -> SemiIso f s t a b
@@ -27,6 +27,14 @@ apply l = withSemiIso l const
 -- | Applies the 'SemiIso' in the opposite direction.
 unapply :: forall f s t a b. Applicative f => ASemiIso f s t a b -> b -> f t
 unapply l = withSemiIso l (const id)
+
+--compose :: forall f x b s y a t. Bind f => ASemiIso f x y a b -> ASemiIso f s t x y -> SemiIso f s t a b
+compose :: forall f s a x. Bind f => ASemiIso' f x a -> ASemiIso' f s x -> SemiIso' f s a
+compose sxay xtyb =
+  let
+    Retail f f' = sxay (Retail pure pure)
+    Retail g g' = xtyb (Retail pure pure)
+  in semiIso (f <=< g) (g' <=< f')
 
 withSemiIso :: forall f s t a b r. Applicative f => ASemiIso f s t a b -> ((s -> f a) -> (b -> f t) -> r) -> r
 withSemiIso ai k = case ai (Retail pure pure) of

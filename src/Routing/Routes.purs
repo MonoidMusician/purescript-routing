@@ -1,14 +1,10 @@
 module Routing.Routes where
 
-import Data.Array (fromFoldable)
 import Data.Either (Either(..), either)
 import Data.Lens.Prism (prism', only)
 import Data.Lens.Prism.Either (_Left, _Right)
 import Data.Lens.Types (Prism')
-import Data.List (List)
 import Data.Maybe (Maybe(..))
-import Data.Semiring.Free (Free(..))
-import Data.String (joinWith)
 import Prelude hiding (discard)
 import Routing (match)
 import Routing.Combinators (class Combinators, allowed, discard, matchlit, (/>), (<:>), (<:/.../>))
@@ -69,7 +65,4 @@ parseloc l = match loc l # either (const (Left ("url_parse_error/" <> l))) id
 -- | `parseloc`. `_NotFound` gets rendered as "/404/...".
 -- | Errors are, somewhat unforunately, printed into the result string ...
 showloc :: Location -> String
-showloc = build loc >>> flip either id \(Free e) -> showerrorzies e
-
-showerrorzies :: List (List String) -> String
-showerrorzies e = joinWith "; " $ fromFoldable $ joinWith ", " <<< fromFoldable <$> e
+showloc = build loc >>> either id id
