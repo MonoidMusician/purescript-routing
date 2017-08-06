@@ -74,7 +74,7 @@ _variant ::
   SProxy s -> Prism' (Variant r') t
 _variant s = prism' (inj s) (prj s)
 _recast ::
-  forall s t r r' n.
+  forall r r' n.
     Union r' n r =>
     Contractable r r' =>
   RProxy n -> Prism' (Variant r) (Variant r')
@@ -180,7 +180,7 @@ instance routingGenericRepNoConstructors :: RoutingGeneric NoConstructors where
 instance routingGenericRepNoArguments :: RoutingGeneric NoArguments where
   routingGenericRep = solely NoArguments <:> emptySuccess
 
-_Rec :: forall name a. Iso' (Rec a) a
+_Rec :: forall a. Iso' (Rec a) a
 _Rec = iso (\(Rec a) -> a) Rec
 
 instance routingGenericRepRec :: RoutingGeneric a => RoutingGeneric (Rec a) where

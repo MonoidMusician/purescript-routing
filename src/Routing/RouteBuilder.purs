@@ -2,13 +2,12 @@ module Routing.RouteBuilder (RouteBuilder(..), build, format) where
 
 import Control.Plus (empty, (<|>))
 import Data.Bifunctor (bimap)
-import Data.Either (Either(..))
+import Data.Either (Either(..), either)
 import Data.Foldable (foldMap)
 import Data.Functor.Contravariant (class Contravariant, cmap)
-import Data.Lens (preview)
+import Data.Lens.SemiIso (apply)
 import Data.List (List(..), (:))
 import Data.Map (isEmpty, singleton, toUnfoldable)
-import Data.Maybe (maybe)
 import Data.Monoid (mempty)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Semiring.Free (Free, free)
@@ -16,7 +15,7 @@ import Data.String (drop)
 import Data.Tuple (Tuple(..), uncurry)
 import Data.Validation.Semiring (V, invalid, unV)
 import Partial.Unsafe (unsafePartialBecause)
-import Prelude hiding (discard)
+import Prelude hiding (discard, apply)
 import Routing.Combinators (class Combinators, emptySuccess, withCurry)
 import Routing.Match.Class (class MatchClass)
 import Routing.Types (Route, RoutePart(..))
@@ -33,8 +32,8 @@ instance combRouteBuilder :: Combinators RouteBuilder where
   emptySuccess = RouteBuilder (const (pure mempty))
   allowed _ = emptySuccess
   eitherOr (RouteBuilder l) (RouteBuilder r) = RouteBuilder \a -> l a <|> r a
-  prismMap p (RouteBuilder r) = RouteBuilder
-    (preview p >>> maybe (invalid (free "prism failed to match")) r)
+  semiMap p (RouteBuilder r) = RouteBuilder
+    (apply p >>> either (invalid <<< free) r)
   withCurry (RouteBuilder l) (RouteBuilder r) = RouteBuilder
     (bimap l r >>> uncurry append)
   andThen l r = cmap (Tuple unit) (withCurry l r)

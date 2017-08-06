@@ -11,7 +11,7 @@ import Data.Semiring.Free (Free(..))
 import Data.String (joinWith)
 import Prelude hiding (discard)
 import Routing (match)
-import Routing.Combinators (class Combinators, allowed, discard, matchlit, (/>), (<:>), (<=/../>))
+import Routing.Combinators (class Combinators, allowed, discard, matchlit, (/>), (<:>), (<:/.../>))
 import Routing.Match.Class (class MatchClass, int, lit, str)
 import Routing.RouteBuilder (build)
 
@@ -47,10 +47,10 @@ _NotFound = _Left
 -- |   - `_NotFound` maps to `404` (idem), but can represent any other location.
 loc :: forall m. Combinators m => MatchClass m => m Location
 loc = do
-  _Home      <=/../> allowed (lit "home")
-  _Dashboard <=/../> lit "dashboard"
-  _Project   <=/../> lit "project" /> int
-  _NotFound  <=/../> match404
+  _Home      <:/.../> allowed (lit "home")
+  _Dashboard <:/.../> lit "dashboard"
+  _Project   <:/.../> lit "project" /> int
+  _NotFound  <:/.../> match404
   where
     match404 = do
       -- "404" --> 404

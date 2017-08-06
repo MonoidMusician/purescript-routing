@@ -6,21 +6,18 @@ import Control.Alt (class Alt, (<|>))
 import Control.Alternative (class Alternative)
 import Control.Apply (lift2, applyFirst, applySecond)
 import Control.Plus (class Plus, empty)
-
-import Data.Either (Either(..))
+import Data.Either (Either(..), either)
 import Data.Foldable (foldl)
 import Data.Int (fromString)
+import Data.Lens.SemiIso (unapply)
 import Data.List (List(..), reverse)
-import Data.Lens.Prism (review)
 import Data.Map as M
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
 import Data.Semiring.Free (Free, free)
-import Data.Tuple (Tuple(..), snd)
+import Data.Tuple (Tuple(..), snd, uncurry)
 import Data.Validation.Semiring (V, invalid, unV)
-
 import Global (readFloat, isNaN)
-
 import Routing.Combinators (class Combinators, optional)
 import Routing.Match.Class (class MatchClass)
 import Routing.Match.Error (MatchError(..), showMatchError)
@@ -119,11 +116,11 @@ instance matchAlternative :: Alternative Match
 
 instance matchApply :: Apply Match where
   apply (Match r2a2b) (Match r2a) =
-    Match $ (\r -> unV (processFnErr r) processFnRes (r2a2b r))
+    Match \r -> unV (processFnErr r) processFnRes (r2a2b r)
     where processFnErr r err =
             invalid $ err * unV id (const one) (r2a r)
           processFnRes (Tuple rs a2b) =
-            unV invalid (\(Tuple rss a) -> pure $ Tuple rss (a2b a)) (r2a rs)
+            map a2b <$> r2a rs
 
 instance matchApplicative :: Applicative Match where
   pure a = Match \r -> pure $ Tuple r a
@@ -133,7 +130,8 @@ instance combinatorsMatch :: Combinators Match where
   emptySuccess = Match (pure <<< (Tuple <@> unit))
   allowed f = optional f
   eitherOr = (<|>)
-  prismMap p = map (review p)
+  semiMap p (Match r2a) = Match \r -> unV invalid (uncurry runiso) (r2a r)
+    where runiso rs = unapply p >>> either (invalid <<< free <<< Fail) (pure <<< Tuple rs)
   withCurry = lift2 Tuple
   andThen = applySecond
   before = applyFirst
