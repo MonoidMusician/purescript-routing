@@ -3,8 +3,9 @@ module Routing.Generic where
 import Prelude
 
 import Data.Array (fromFoldable, toUnfoldable)
-import Data.Generic.Rep (class Generic, Argument(..), Constructor(..), Field(Field), NoArguments(..), NoConstructors, Product(Product), Sum(Inr, Inl), from, to)
-import Data.Lens (Prism', Iso', _Just, _Nothing, iso, prism')
+import Data.Either (Either)
+import Data.Generic.Rep (class Generic, Argument(..), Constructor(..), Field(Field), NoArguments(..), NoConstructors, Product(Product), Rec(..), Sum(Inr, Inl), from, to)
+import Data.Lens (Iso', Prism', _Just, _Left, _Nothing, _Right, iso, prism')
 import Data.Lens.Iso.Newtype (_Newtype)
 import Data.List (List)
 import Data.Map (Map)
@@ -37,6 +38,9 @@ instance routingString :: Routing String where
 
 instance routingMaybe :: Routing a => Routing (Maybe a) where
   routing = _Just <:> routing <||> _Nothing <:> emptySuccess
+
+instance routingEither :: (Routing a, Routing b) => Routing (Either a b) where
+  routing = _Left <:> routing <||> _Right <:> routing
 
 newtype Parameter (s :: Symbol) a = Parameter a
 derive instance newtypeParameter :: Newtype (Parameter s a) _
@@ -71,38 +75,54 @@ _variant ::
 _variant s = prism' (inj s) (prj s)
 _recast ::
   forall s t r r' n.
-    RowCons s t r' r =>
-    Union r' n r => -- duh
+    Union r' n r =>
     Contractable r r' =>
-  SProxy s -> RProxy n -> Prism' (Variant r) (Variant r')
-_recast _ _ = prism' expand contract
+  RProxy n -> Prism' (Variant r) (Variant r')
+_recast _ = prism' expand contract
+_without ::
+  forall s t r r' n.
+    RowCons s t r' r =>
+    -- TODO: way to infer these constraints?
+    RowSingleton s t n =>
+    Union r' n r =>
+    Contractable r r' =>
+  SProxy s -> Prism' (Variant r) (Variant r')
+_without _ = _recast (RProxy :: RProxy n)
+
+class RowCons s t () r <= RowSingleton s t r | -> s t r
+instance rowSingleton ::
+  ( RowToList r (Cons s t Nil)
+  , RowCons s t () r
+  ) => RowSingleton s t r
 
 class
   ( IsSymbol s
   , RowCons s t r' r
   , RowLacks s r'
+  -- causes errors around RowCons s t r' r if included?
+  --, RowSingleton s t n
   , Union r' n r
   , RowToList r' rl'
   , ListToRow rl' r'
   , RowToList r rl
   , ListToRow rl r
-  , Contractable r r'
   ) <= RowListStep s t r' r n rl' rl | -> s t r' r n rl' rl
 
 instance rowListStep ::
   ( IsSymbol s
   , RowCons s t r' r
   , RowLacks s r'
+  , RowSingleton s t n
   , Union r' n r
   , RowToList r' rl'
   , ListToRow rl' r'
   , RowToList r (Cons s t rl')
   , ListToRow (Cons s t rl') r
-  , Contractable r r'
   ) => RowListStep s t r' r n rl' (Cons s t rl')
 
 instance routingVariantCons ::
   ( RowListStep s t r' r n rl' (Cons s t rl')
+  , RowSingleton s t n
   , Routing t
   , RoutingVariant r' rl'
   , VariantTags rl'
@@ -110,9 +130,9 @@ instance routingVariantCons ::
   where
     routingVariantL _ = this <||> other
       where
-        s = (SProxy :: SProxy s)
-        this = _variant s <:> routing
-        other = _recast s (RProxy :: RProxy n) <:>
+        this = _variant (SProxy :: SProxy s) <:>
+          routing
+        other = _without SProxy <:>
           routingVariantL (RLProxy :: RLProxy rl')
 
 class (RowToList r rl, ListToRow rl r) <= RoutingRecord (r :: # Type) (rl :: RowList) | rl -> r where
@@ -137,8 +157,8 @@ instance routingRecordNil :: RoutingRecord () Nil where
 
 instance routingRecordCons ::
   ( RowListStep s String r' r n rl' (Cons s String rl')
+  , RowLacks s r' -- FIXME: why?? should be covered by RowListStep??
   , RoutingRecord r' rl'
-  , RowLacks s r' -- FIXME: why?
   , Routing String
   ) => RoutingRecord r (Cons s String rl')
   where
@@ -159,6 +179,12 @@ instance routingGenericRepNoConstructors :: RoutingGeneric NoConstructors where
 
 instance routingGenericRepNoArguments :: RoutingGeneric NoArguments where
   routingGenericRep = solely NoArguments <:> emptySuccess
+
+_Rec :: forall name a. Iso' (Rec a) a
+_Rec = iso (\(Rec a) -> a) Rec
+
+instance routingGenericRepRec :: RoutingGeneric a => RoutingGeneric (Rec a) where
+  routingGenericRep = _Rec <:> routingGenericRep
 
 _Field :: forall name a. Iso' (Field name a) a
 _Field = iso (\(Field a) -> a) Field
